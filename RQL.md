@@ -36,6 +36,75 @@ Client nhận response
 
 ---
 
+## 0.1 Cấu trúc dự án tổng quan — mỗi lớp nằm ở đâu
+
+Trước khi đi vào từng bước, cần biết **các file này vật lý nằm ở đâu** trong dự án. Nguyên tắc chung: cái gì dùng chung cho toàn bộ ứng dụng (Middleware, Filter, Interceptor/Pipe toàn cục) → đặt trong `common/`; cái gì chỉ dành riêng cho 1 domain (vd Guard chỉ dùng ở `orders`) → đặt ngay trong module đó.
+
+```
+src/
+├── common/                          # Dùng chung cho TOÀN BỘ ứng dụng
+│   ├── middleware/
+│   │   └── request-id.middleware.ts        # ① Middleware
+│   ├── interceptors/
+│   │   ├── logging.interceptor.ts          # ③ Interceptor (log)
+│   │   └── transform.interceptor.ts        # ③ Interceptor (chuẩn hóa response)
+│   ├── filters/
+│   │   └── http-exception.filter.ts        # ⑦ Exception Filter
+│   ├── dto/
+│   │   └── pagination-query.dto.ts         # DTO dùng chung nhiều module
+│   └── utils/
+│       └── hash.util.ts
+│
+├── auth/                            # Domain xác thực — chứa Guard + Strategy dùng chung
+│   ├── strategies/
+│   │   └── jwt.strategy.ts                 # Xác minh chữ ký + hạn token
+│   ├── guards/
+│   │   ├── jwt-auth.guard.ts               # ② Guard — bắt buộc đăng nhập
+│   │   └── roles.guard.ts                  # ② Guard — kiểm tra role
+│   ├── decorators/
+│   │   ├── current-user.decorator.ts
+│   │   └── roles.decorator.ts
+│   ├── dto/
+│   ├── auth.controller.ts
+│   ├── auth.service.ts
+│   └── auth.module.ts
+│
+├── orders/                          # Domain nghiệp vụ — nơi đặt Pipe (DTO) + Controller + Service riêng
+│   ├── dto/
+│   │   └── create-order.dto.ts             # ④ Pipe validate dựa vào DTO này
+│   ├── entities/
+│   │   └── order.entity.ts
+│   ├── orders.controller.ts                # ⑤ Controller
+│   ├── orders.service.ts                   # ⑥ Service & DB
+│   └── orders.module.ts
+│
+├── products/
+├── users/
+│
+├── app.module.ts                    # Nơi đăng ký Middleware theo route (configure())
+└── main.ts                          # Nơi đăng ký Guard/Interceptor/Pipe/Filter TOÀN CỤC (useGlobal...)
+```
+
+**Nguyên tắc chọn nơi đặt file — trả lời 2 câu hỏi:**
+
+1. **Dùng cho 1 route/module cụ thể hay toàn bộ ứng dụng?**
+   - Toàn bộ ứng dụng (mọi request đều cần) → `common/` + đăng ký `useGlobal...()` trong `main.ts`.
+   - Chỉ 1 vài route cụ thể → đặt trong module đó, gắn bằng `@UseGuards()`/`@UseInterceptors()` ngay tại Controller.
+
+2. **Có liên quan tới xác thực/phân quyền không?**
+   - Có → đặt trong `auth/guards/`, `auth/strategies/` (dù được dùng ở module khác, vẫn thuộc "sở hữu" của domain Auth).
+   - Không (log, transform, validate dữ liệu riêng của 1 domain) → đặt cạnh domain đó (`orders/dto/`) hoặc `common/` nếu dùng chung nhiều domain.
+
+**2 nơi "lắp ráp" quan trọng cần nhớ:**
+
+| Nơi đăng ký | Áp dụng cho | Ví dụ |
+|---|---|---|
+| `main.ts` (`useGlobalPipes`, `useGlobalFilters`, `useGlobalInterceptors`) | Toàn bộ ứng dụng, mọi route | `ValidationPipe`, `HttpExceptionFilter`, `TransformInterceptor` |
+| `app.module.ts` (`configure()` + `MiddlewareConsumer`) | Middleware, có thể giới hạn theo route bằng `.forRoutes(...)` | `RequestIdMiddleware` |
+| Ngay tại Controller/method (`@UseGuards()`, `@UseInterceptors()`) | Chỉ route/method đó | `JwtAuthGuard`, `RolesGuard` |
+
+---
+
 ## ① Middleware — người gác cổng đầu tiên
 
 Middleware chạy **trước cả khi Nest xác định route nào sẽ xử lý request**. Dùng để làm những việc chung cho mọi request: gắn Request ID, log thời gian bắt đầu, đọc header thô...
