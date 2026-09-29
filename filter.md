@@ -6,6 +6,19 @@
 ---
 
 ## 1. Tổng quan luồng xử lý
+```page + limit
+     ↓
+skip = (page - 1) × limit
+     ↓
+findAndCount({
+    skip,
+    take: limit
+})
+     ↓
+orders + total
+     ↓
+data + meta
+```
 
 ```
 Client  →  Query string  →  ValidationPipe  →  Controller  →  Service  →  TypeORM  →  DB
